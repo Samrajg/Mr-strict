@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Detailed Mark Report{% endblock %}
+{% block header_title %}Detailed Mark Report: {{ assignment.title }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+    <div class="card" style="flex: 1; margin-right: 20px; text-align: center;">
+        <h3 style="margin-top: 0; color: #666;">Total Submissions</h3>
+        <h1 style="margin: 0; color: var(--primary); font-size: 2.5em;">{{ submissions|length }}</h1>
+    </div>
+    <div class="card" style="flex: 1; text-align: center; margin-right: 20px;">
+        <h3 style="margin-top: 0; color: #666;">Class Average</h3>
+        <h1 style="margin: 0; color: var(--primary); font-size: 2.5em;">{{ avg_score }}%</h1>
+    </div>
+    <div class="card" style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 10px; background-color: #f0fdf4; border: 1px solid #bbf7d0;">
+        <a href="{{ url_for('grading.download_report', assignment_id=assignment.id) }}" class="btn" style="background-color: #16a34a; font-size: 1.1em; padding: 10px; text-align: center;">
+            ⬇️ Download Master PDF
+        </a>
+        <a href="{{ url_for('grading.download_csv', assignment_id=assignment.id) }}" class="btn" style="background-color: #0284c7; font-size: 1.1em; padding: 10px; text-align: center;">
+            ⬇️ Export CSV (Excel)
+        </a>
+    </div>
+</div>
+
+{% if assignment.is_blind %}
+<div class="alert" style="background-color: #e0e7ff; color: #3730a3; border-left: 4px solid #4338ca;">
+    <strong>Blind Grading Mode Active:</strong> Student names are hidden. Candidate IDs are shown below. True names will only be revealed in the CSV Export.
+</div>
+{% endif %}
+
+<div class="card" style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; min-width: 800px;">
+        <thead>
+            <tr style="background-color: var(--secondary); color: white;">
+                <th style="padding: 12px; text-align: left;">{% if assignment.is_blind %}Candidate ID{% else %}Student ID (Filename){% endif %}</th>
+                
+                {% set all_qs = [] %}
+                {% for sub in submissions %}
+                    {% for q in sub.q_scores_dict.keys() %}
+                        {% if q not in all_qs %}
+                            {% set _ = all_qs.append(q) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+                
+                {% for q in all_qs|sort %}
+                <th style="padding: 12px; text-align: center;">{{ q }}</th>
+                {% endfor %}
+                
+                <th style="padding: 12px; text-align: center;">Flags</th>
+                <th style="padding: 12px; text-align: right; background-color: var(--primary);">Total Mark</th>
+                <th style="padding: 12px; text-align: center;">Feedback</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sub in submissions %}
+            <tr style="border-bottom: 1px solid #eee; {% if sub.plagiarism_flag %}background-color: #fef2f2;{% endif %}">
+                <td style="padding: 12px; font-weight: bold;">
+                    {% if assignment.is_blind and sub.student.candidate_id %}
+                        {{ sub.student.candidate_id }}
+                    {% else %}
+                        {{ sub.student.name }}
+                    {% endif %}
+                </td>
+                
+                {% for q in all_qs|sort %}
+                <td style="padding: 12px; text-align: center;">
+                    {{ sub.q_scores_dict.get(q, '-') }}
+                </td>
+                {% endfor %}
+                
+                <td style="padding: 12px; text-align: center; color: red; font-size: 0.9em; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ sub.plagiarism_flag }}">
+                    {% if sub.plagiarism_flag %}
+                        ⚠️ {{ sub.plagiarism_flag }}
+                    {% endif %}
+                </td>
+                
+                <td style="padding: 12px; text-align: right; background-color: #f8fafc;">
+                    <span style="font-weight: bold; font-size: 1.2em; color: {% if sub.score >= 80 %}green{% elif sub.score >= 50 %}orange{% else %}red{% endif %};">
+                        {{ sub.score }}
+                    </span>
+                </td>
+                
+                <td style="padding: 12px; text-align: center;">
+                    <a href="{{ url_for('grading.student_feedback_pdf', assignment_id=assignment.id, student_id=sub.student_id) }}" style="text-decoration: none; font-size: 1.2em;" title="Download Student Feedback">
+                        📄
+                    </a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="100%" style="padding: 20px; text-align: center; color: #999;">No submissions found for this assignment.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('grading.evaluate') }}" class="btn">Evaluate Another Batch</a>
+</div>
+{% endblock %}

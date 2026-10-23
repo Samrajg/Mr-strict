@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mr Strict Evaluator{% endblock %}</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --secondary: #1e40af;
+            --bg-color: #f3f4f6;
+            --text-color: #1f2937;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 250px;
+            background-color: var(--secondary);
+            color: white;
+            padding: 20px;
+        }
+        .sidebar a {
+            color: white;
+            text-decoration: none;
+            display: block;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+        .sidebar a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+        .header {
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .alert {
+            padding: 10px;
+            background-color: #d1fae5;
+            color: #065f46;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>Mr Strict</h2>
+        <nav>
+            <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
+            <a href="{{ url_for('grading.evaluate') }}">Evaluate Assignment</a>
+            <a href="{{ url_for('rubrics.generate') }}">Generate Rubric</a>
+        </nav>
+    </div>
+
+    <div class="content">
+        <div class="header">
+            <h2>{% block header_title %}{% endblock %}</h2>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

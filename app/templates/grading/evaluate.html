@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluate Assignments{% endblock %}
+{% block header_title %}Bulk Assignment Evaluator (Local BERT Model){% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <p style="font-size: 0.9em; color: #666;">Upload a batch of student PDFs and a single Teacher Rubric/Answer Key. The local BERT AI model will evaluate them all based on semantic similarity.</p>
+    
+    <form method="POST" enctype="multipart/form-data" style="margin-top: 15px;">
+        <div class="form-group">
+            <label><strong>Assignment Title</strong></label>
+            <input type="text" name="assignment_title" class="form-control" placeholder="e.g., Midterm Essay" required>
+        </div>
+        <div class="form-group">
+            <label><strong>Teacher Rubric / Answer Key (Single PDF)</strong></label>
+            <input type="file" name="teacher_pdf" class="form-control" accept=".pdf" required>
+        </div>
+        <div class="form-group" style="background-color: #f8fafc; padding: 15px; border-left: 4px solid var(--primary); border-radius: 4px;">
+            <label><strong>Student Submissions (Bulk Upload)</strong></label>
+            <p style="font-size: 0.8em; margin: 5px 0 10px 0;">You can select multiple PDF files at once.</p>
+            <input type="file" name="student_pdfs" class="form-control" accept=".pdf" multiple required>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 20px;">
+            <input type="checkbox" name="is_blind" id="is_blind" value="1" style="width: 20px; height: 20px;">
+            <label for="is_blind" style="font-weight: bold; font-size: 1.1em;">Enable "Blind" Grading Mode</label>
+        </div>
+        <p style="color: #666; font-size: 0.9em; margin-left: 30px;">Hides student names and replaces them with Candidate IDs to prevent subconscious grading bias.</p>
+        
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px; font-size: 1.1em; padding: 12px;">Run Bulk Evaluation</button>
+    </form>
+</div>
+{% endblock %}

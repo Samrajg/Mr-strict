@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.env*
+!.env.example
+venv/
+.venv/
+env/
+instance/
+uploads/
+app.db
