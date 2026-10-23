@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for
-
+from app.auth_utils import login_required
 from app.models import Rubric
 from app import db
 import google.generativeai as genai
@@ -8,7 +8,7 @@ from flask import current_app
 rubrics_bp = Blueprint('rubrics', __name__, url_prefix='/rubrics')
 
 @rubrics_bp.route('/generate', methods=['GET', 'POST'])
-
+@login_required
 def generate():
     if request.method == 'POST':
         prompt = request.form.get('prompt')

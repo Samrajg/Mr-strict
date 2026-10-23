@@ -1,5 +1,4 @@
-from flask import Blueprint, render_template
-
+from flask import Blueprint, render_template, session
 from app.models import Assignment, Submission, Rubric
 import json
 
@@ -10,8 +9,12 @@ dashboard_bp = Blueprint('dashboard', __name__)
 def index():
     rubrics = Rubric.query.order_by(Rubric.id.desc()).all()
     
-    # Calculate Live Analytics Data
-    assignments = Assignment.query.order_by(Assignment.id.asc()).all()
+    # Calculate Live Analytics Data scoped to active workspace (or all if 'default')
+    active_ws = session.get('active_workspace', 'default')
+    if active_ws == 'default':
+        assignments = Assignment.query.order_by(Assignment.id.asc()).all()
+    else:
+        assignments = Assignment.query.filter_by(workspace_name=active_ws).order_by(Assignment.id.asc()).all()
     
     trend_labels = []
     trend_data = []

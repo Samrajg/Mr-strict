@@ -34,5 +34,6 @@ COPY --chown=user . $HOME/app
 ENV FLASK_APP=run.py
 ENV FLASK_ENV=production
 
-# Initialize DB and start gunicorn at runtime
-CMD bash -c "python init_db.py && gunicorn -b 0.0.0.0:7860 run:app --timeout 120 --workers 2"
+# Safe production startup: start gunicorn without dropping database
+# Defaults to PORT 8080 (Cloud Run standard) or 7860 (Hugging Face standard)
+CMD exec gunicorn -b 0.0.0.0:${PORT:-8080} run:app --timeout 120 --workers 1 --threads 4

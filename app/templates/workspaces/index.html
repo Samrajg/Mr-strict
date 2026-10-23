@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Local Workspaces - Mr Strict{% endblock %}
+{% block header_title %}Local Workspace Management{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
+    <!-- Create Workspace Form -->
+    <div class="card">
+        <h3 style="margin-top: 0; color: var(--secondary);">Create New Workspace</h3>
+        <p style="font-size: 0.9em; color: #666;">
+            All PDFs, rubrics, results, reports, and backups will be stored safely inside this folder on your computer.
+        </p>
+        <form method="POST" action="{{ url_for('workspaces.create') }}">
+            <div class="form-group">
+                <label for="workspace_name"><strong>Workspace Name</strong></label>
+                <input type="text" id="workspace_name" name="workspace_name" class="form-control" placeholder="e.g. My_Class_2026" required pattern="[a-zA-Z0-9_\- ]+">
+                <small style="color: #666;">Allowed: letters, numbers, hyphens, underscores, spaces.</small>
+            </div>
+            <div class="form-group">
+                <label for="description"><strong>Description (Optional)</strong></label>
+                <textarea id="description" name="description" class="form-control" rows="2" placeholder="Course title, semester, or class notes"></textarea>
+            </div>
+            <button type="submit" class="btn" style="width: 100%;">Create Workspace</button>
+        </form>
+
+        <div style="margin-top: 25px; padding: 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+            <p style="margin: 0; font-size: 0.85em; color: #475569;">
+                📁 <strong>Root Storage Location:</strong><br>
+                <code style="word-break: break-all;">{{ root_path }}</code>
+            </p>
+        </div>
+    </div>
+
+    <!-- Existing Workspaces List -->
+    <div class="card">
+        <h3 style="margin-top: 0; color: var(--secondary);">Available Workspaces</h3>
+        <p style="font-size: 0.9em; color: #666;">Select a workspace to activate it for grading and analytics.</p>
+
+        {% if workspaces %}
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+                <tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left;">
+                    <th style="padding: 10px;">Name</th>
+                    <th style="padding: 10px;">Description</th>
+                    <th style="padding: 10px;">Status</th>
+                    <th style="padding: 10px; text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ws in workspaces %}
+                <tr style="border-bottom: 1px solid #e2e8f0; {% if ws.name == active_ws %}background-color: #eff6ff;{% endif %}">
+                    <td style="padding: 12px 10px; font-weight: bold;">
+                        📂 {{ ws.name }}
+                    </td>
+                    <td style="padding: 12px 10px; color: #64748b; font-size: 0.9em;">
+                        {{ ws.description or '-' }}
+                    </td>
+                    <td style="padding: 12px 10px;">
+                        {% if ws.name == active_ws %}
+                            <span style="background-color: #22c55e; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold;">ACTIVE</span>
+                        {% else %}
+                            <span style="color: #94a3b8; font-size: 0.85em;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px 10px; text-align: right;">
+                        <div style="display: inline-flex; gap: 8px;">
+                            {% if ws.name != active_ws %}
+                            <form method="POST" action="{{ url_for('workspaces.select', name=ws.name) }}" style="display: inline;">
+                                <button type="submit" class="btn" style="padding: 5px 10px; font-size: 0.85em; background-color: #3b82f6;">Open</button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('workspaces.backup', name=ws.name) }}" style="display: inline;">
+                                <button type="submit" class="btn" style="padding: 5px 10px; font-size: 0.85em; background-color: #64748b;" title="Create ZIP backup in workspace backups/ folder">Backup</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #94a3b8; font-style: italic;">No workspaces found.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

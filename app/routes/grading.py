@@ -1,6 +1,8 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, session
-
+from werkzeug.utils import secure_filename
+from app.auth_utils import login_required
 from app.services.evaluator import extract_text_from_pdf, preprocess_text, evaluate_assignment, detect_plagiarism, parse_questions
+from app.services import workspace_service
 from app.models import Assignment, Submission, Student
 from app import db
 import json
@@ -14,31 +16,57 @@ from fpdf import FPDF # fpdf2 uses FPDF
 
 grading_bp = Blueprint('grading', __name__, url_prefix='/grading')
 
-UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'pdf'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def get_active_workspace_name():
+    ws = session.get('active_workspace', 'default')
+    if not workspace_service.workspace_exists(ws):
+        try:
+            workspace_service.create_workspace(ws, "Default Workspace")
+        except:
+            pass
+    return ws
 
 @grading_bp.route('/evaluate', methods=['GET', 'POST'])
+@login_required
 def evaluate():
+    active_ws = get_active_workspace_name()
+    ws_dir = workspace_service.ensure_workspace_layout(active_ws)
+
     if request.method == 'POST':
         student_files = request.files.getlist('student_pdfs')
         teacher_file = request.files.get('teacher_pdf')
-        assignment_title = request.form.get('assignment_title')
+        assignment_title = (request.form.get('assignment_title') or '').strip()
         is_blind = True if request.form.get('is_blind') else False
         
         if not student_files or not teacher_file or not assignment_title:
             flash('Please provide an assignment title, the Teacher Rubric, and at least one Student PDF.')
             return redirect(url_for('grading.evaluate'))
             
-        if teacher_file.filename == '':
-            flash('No teacher file selected.')
+        if not teacher_file.filename or not allowed_file(teacher_file.filename):
+            flash('Invalid Teacher Rubric file. Only valid .pdf files are accepted.')
+            return redirect(url_for('grading.evaluate'))
+
+        valid_student_files = [f for f in student_files if f.filename and allowed_file(f.filename)]
+        if not valid_student_files:
+            flash('No valid student PDF files selected. Please upload files ending in .pdf.')
             return redirect(url_for('grading.evaluate'))
 
         batch_id = str(uuid.uuid4())
-        batch_dir = os.path.join(UPLOAD_FOLDER, batch_id)
+        # Store in workspace uploads folder so it is preserved across restarts
+        batch_dir = os.path.join(ws_dir, 'uploads', batch_id)
         os.makedirs(batch_dir, exist_ok=True)
         
-        # Save Teacher File
+        # Save Teacher File in batch_dir and archive to answer_keys
         teacher_path = os.path.join(batch_dir, 'teacher.pdf')
         teacher_file.save(teacher_path)
+        try:
+            shutil.copy2(teacher_path, os.path.join(ws_dir, 'uploads', 'answer_keys', f"{batch_id}_teacher.pdf"))
+        except:
+            pass
         
         # Extract teacher questions immediately for the Weights UI
         with open(teacher_path, 'rb') as f:
@@ -47,45 +75,60 @@ def evaluate():
             teacher_qs = parse_questions(teacher_clean)
             
         if not teacher_qs:
-            flash('Could not extract any text from the teacher rubric.')
-            shutil.rmtree(batch_dir)
+            flash('Could not extract any questions or text from the teacher rubric. Ensure the PDF contains text.')
+            shutil.rmtree(batch_dir, ignore_errors=True)
             return redirect(url_for('grading.evaluate'))
             
         # Save Student Files and build metadata
         metadata = {
             "assignment_title": assignment_title,
             "is_blind": is_blind,
+            "workspace_name": active_ws,
             "students": []
         }
         
-        for idx, student_file in enumerate(student_files):
-            if student_file.filename == '':
-                continue
-            student_name = student_file.filename.replace('.pdf', '')
+        for idx, student_file in enumerate(valid_student_files):
+            clean_name = secure_filename(student_file.filename)
+            student_name = clean_name.rsplit('.', 1)[0] or f"student_{idx}"
             safe_filename = f"student_{idx}.pdf"
-            student_file.save(os.path.join(batch_dir, safe_filename))
+            student_save_path = os.path.join(batch_dir, safe_filename)
+            student_file.save(student_save_path)
+            try:
+                shutil.copy2(student_save_path, os.path.join(ws_dir, 'uploads', 'student_submissions', f"{batch_id}_{safe_filename}"))
+            except:
+                pass
+
             metadata["students"].append({
                 "real_name": student_name,
                 "file": safe_filename
             })
             
-        with open(os.path.join(batch_dir, 'metadata.json'), 'w') as f:
-            json.dump(metadata, f)
+        with open(os.path.join(batch_dir, 'metadata.json'), 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2)
             
         # Proceed to step 2: Weight Assignment
         return render_template('grading/set_weights.html', batch_id=batch_id, questions=teacher_qs.keys(), title=assignment_title)
 
-    return render_template('grading/evaluate.html')
+    return render_template('grading/evaluate.html', active_workspace=active_ws)
 
 
 @grading_bp.route('/weights/<batch_id>', methods=['POST'])
+@login_required
 def process_weights(batch_id):
-    batch_dir = os.path.join(UPLOAD_FOLDER, batch_id)
+    active_ws = get_active_workspace_name()
+    ws_dir = workspace_service.get_workspace_dir(active_ws)
+    batch_dir = os.path.join(ws_dir, 'uploads', batch_id)
+    
+    # Fallback to check default upload folder if batch was created previously
     if not os.path.exists(batch_dir):
-        flash('Session expired or batch not found.')
-        return redirect(url_for('grading.evaluate'))
+        fallback_dir = os.path.join('uploads', batch_id)
+        if os.path.exists(fallback_dir):
+            batch_dir = fallback_dir
+        else:
+            flash('Session expired or batch not found in the active workspace.')
+            return redirect(url_for('grading.evaluate'))
         
-    with open(os.path.join(batch_dir, 'metadata.json'), 'r') as f:
+    with open(os.path.join(batch_dir, 'metadata.json'), 'r', encoding='utf-8') as f:
         metadata = json.load(f)
         
     assignment_title = metadata['assignment_title']
@@ -108,7 +151,7 @@ def process_weights(batch_id):
         # Default to equal distribution if they somehow submitted 0s
         weights = {}
         
-    new_assignment = Assignment(title=assignment_title, is_blind=is_blind)
+    new_assignment = Assignment(title=assignment_title, is_blind=is_blind, workspace_name=active_ws)
     db.session.add(new_assignment)
     db.session.commit()
     
@@ -183,6 +226,7 @@ def process_weights(batch_id):
         return redirect(url_for('grading.evaluate'))
 
 @grading_bp.route('/report/<int:assignment_id>')
+@login_required
 def report(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     submissions = Submission.query.filter_by(assignment_id=assignment.id).all()
@@ -200,6 +244,7 @@ def report(assignment_id):
     return render_template('grading/report.html', assignment=assignment, submissions=submissions, avg_score=avg_score)
 
 @grading_bp.route('/report/<int:assignment_id>/download')
+@login_required
 def download_report(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     submissions = Submission.query.filter_by(assignment_id=assignment.id).all()
@@ -248,12 +293,24 @@ def download_report(assignment_id):
         pdf.cell(total_col_width, 10, str(sub.score), border=1, align="C")
         pdf.ln()
 
-    response = make_response(bytes(pdf.output()))
+    pdf_bytes = bytes(pdf.output())
+    
+    # Save copy to active workspace reports folder
+    try:
+        active_ws = get_active_workspace_name()
+        ws_dir = workspace_service.get_workspace_dir(active_ws)
+        with open(os.path.join(ws_dir, 'reports', f"report_{assignment.id}.pdf"), 'wb') as f:
+            f.write(pdf_bytes)
+    except:
+        pass
+
+    response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'attachment; filename=report_{assignment.id}.pdf'
     return response
 
 @grading_bp.route('/report/<int:assignment_id>/csv')
+@login_required
 def download_csv(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     submissions = Submission.query.filter_by(assignment_id=assignment.id).all()
@@ -281,12 +338,24 @@ def download_csv(assignment_id):
         row.append(sub.plagiarism_flag if sub.plagiarism_flag else "None")
         cw.writerow(row)
         
-    output = make_response(si.getvalue())
+    csv_content = si.getvalue()
+    
+    # Save copy to active workspace exports folder
+    try:
+        active_ws = get_active_workspace_name()
+        ws_dir = workspace_service.get_workspace_dir(active_ws)
+        with open(os.path.join(ws_dir, 'exports', f"report_{assignment.id}.csv"), 'w', encoding='utf-8') as f:
+            f.write(csv_content)
+    except:
+        pass
+
+    output = make_response(csv_content)
     output.headers["Content-Disposition"] = f"attachment; filename=report_{assignment.id}.csv"
     output.headers["Content-type"] = "text/csv"
     return output
 
 @grading_bp.route('/report/<int:assignment_id>/student/<int:student_id>/pdf')
+@login_required
 def student_feedback_pdf(assignment_id, student_id):
     assignment = Assignment.query.get_or_404(assignment_id)
     submission = Submission.query.filter_by(assignment_id=assignment_id, student_id=student_id).first_or_404()
@@ -327,7 +396,19 @@ def student_feedback_pdf(assignment_id, student_id):
     clean_text = submission.content_text.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 5, clean_text)
     
-    response = make_response(bytes(pdf.output()))
+    pdf_bytes = bytes(pdf.output())
+
+    # Save copy to active workspace results folder
+    try:
+        active_ws = get_active_workspace_name()
+        ws_dir = workspace_service.get_workspace_dir(active_ws)
+        safe_name = secure_filename(display_name) or "student"
+        with open(os.path.join(ws_dir, 'results', f"feedback_{assignment.id}_{safe_name}.pdf"), 'wb') as f:
+            f.write(pdf_bytes)
+    except:
+        pass
+
+    response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = f'attachment; filename=feedback_{display_name}.pdf'
     return response

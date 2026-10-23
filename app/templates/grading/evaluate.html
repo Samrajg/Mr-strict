@@ -5,6 +5,9 @@
 
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 0 auto;">
+    <div style="padding: 10px 14px; background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px; margin-bottom: 15px;">
+        <span style="font-size: 0.9em; color: #1e40af;">📂 Active Workspace: <strong>{{ active_workspace }}</strong> &mdash; <a href="{{ url_for('workspaces.index') }}" style="color: #2563eb; text-decoration: underline;">Switch Workspace</a></span>
+    </div>
     <p style="font-size: 0.9em; color: #666;">Upload a batch of student PDFs and a single Teacher Rubric/Answer Key. The local BERT AI model will evaluate them all based on semantic similarity.</p>
     
     <form method="POST" enctype="multipart/form-data" style="margin-top: 15px;">
